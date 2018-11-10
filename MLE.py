@@ -25,9 +25,6 @@ class MLP:
         self.dh = dh
         self.m = m
 
-    def log_likelihood(self, fl, y):
-        return -np.log(fl.os[int(y)])
-
     def fprop(self, x):
         fl = FLayers(ha=np.zeros([self.dh, 1]), hs=np.zeros([self.dh, 1]), oa=np.zeros([self.m, 1]), os=np.zeros([self.m, 1]))
         fl.ha = self.params.b1 + self.params.W1 @ x
@@ -55,7 +52,8 @@ class MLP:
                          os=np.zeros([self.m, 1]),
                          W1=np.zeros([self.dh, self.d]), W2=np.zeros([self.m, self.dh]), b1=np.zeros([self.dh, 1]),
                          b2=np.zeros([self.m, 1]))
-        for i in range(len(batch_data)):
+        K = len(batch_data)
+        for i in range(K):
             dp = batch_data[i]
             fl = self.fprop(dp.x)
             bl = self.bprop(dp.x, dp.y, fl)
@@ -63,10 +61,10 @@ class MLP:
             bl_avg.W2 += bl.W2
             bl_avg.b1 += bl.b1
             bl_avg.b2 += bl.b2
-        bl_avg.W1 /= len(batch_data)
-        bl_avg.W2 /= len(batch_data)
-        bl_avg.b1 /= len(batch_data)
-        bl_avg.b2 /= len(batch_data)
+        bl_avg.W1 /= K
+        bl_avg.W2 /= K
+        bl_avg.b1 /= K
+        bl_avg.b2 /= K
         return bl_avg
 
     def current_cost(self):
@@ -94,37 +92,16 @@ class MLP:
                 self.params.b2 -= self.hyper_params.eta * bl.b2
             current_cost = self.current_cost()
             print('Epoch {}: Loss={}'.format(epoch, current_cost))
-            print('W2 gradient norm: {}'.format(np.linalg.norm(bl.W2)))
+            # print('W2 gradient norm: {}'.format(np.linalg.norm(bl.W2)))
 
     def predict(self, x):
         fl = self.fprop(x)
         return fl.os.argsort(axis=0)[-1]
 
-    def FB(self, dp):
-        self.fprop(dp.x)
-        self.bprop(dp.x, dp.y)
-        return self.log_likelihood(dp.y)
+    def log_likelihood(self, fl, y):
+        return -np.log(fl.os[int(y)])
 
-    def single_iteration(self):
-        bl_avg = BLayers(ha=np.zeros([self.dh, 1]), hs=np.zeros([self.dh, 1]), oa=np.zeros([self.m, 1]),
-                     os=np.zeros([self.m, 1]),
-                     W1=np.zeros([self.dh, self.d]), W2=np.zeros([self.m, self.dh]), b1=np.zeros([self.dh, 1]),
-                     b2=np.zeros([self.m, 1]))
-        for i in range(self.hyper_params.K):
-            dp = self.data_points[i]
-            fl = self.fprop(dp.x)
-            bl = self.bprop(dp.x, dp.y, fl)
-            bl_avg.W1 += bl.W1
-            bl_avg.W2 += bl.W2
-            bl_avg.b1 += bl.b1
-            bl_avg.b2 += bl.b2
-        bl_avg.W1 /= self.hyper_params.K
-        bl_avg.W2 /= self.hyper_params.K
-        bl_avg.b1 /= self.hyper_params.K
-        bl_avg.b2 /= self.hyper_params.K
-        return bl_avg
-
-    def test_gradient(self):
+    def finite_difference(self, K):
         eps = 1e-05
         results = []
         param_dic = self.params._asdict()
@@ -133,7 +110,7 @@ class MLP:
             for i, x in np.ndenumerate(param_dic[p]):
                 log_init_avg = 0.
                 est = 0.
-                for j in range(self.hyper_params.K):
+                for j in range(K):
                     dp = self.data_points[j]
                     fl = self.fprop(dp.x)
                     log_init = self.log_likelihood(fl, dp.y)
@@ -144,35 +121,15 @@ class MLP:
                     param_dic[p][i] = param_dic[p][i] - eps
                     est += (log_pert - log_init) / eps
 
-                est /= self.hyper_params.K
+                est /= K
 
-                grad = self.single_iteration()._asdict()[p][i]
+                grad = self.single_batch(self.data_points[0:K])._asdict()[p][i]
 
-                if est == 0 :
+                if est == 0:
                     ratio = 1
                 else:
-                    ratio =  grad / est
-
-                # log_init = self.FB(dp)
-                # grad = self.bl._asdict()[p][i]
-                # param_dic[p][i] = param_dic[p][i] + eps
-                # log_pert = self.FB(dp)
-                # param_dic[p][i] = param_dic[p][i] - eps
-                # est = (log_pert - log_init)/eps
-                # if est == 0 :
-                #     ratio = 1
-                # else:
-                #     ratio =  grad / est
+                    ratio = grad / est
                 results.append((p, i, grad, est, ratio))
-
-                #grad =
-            # dim = len(param_dic[p].shape)
-            # if dim == 1:
-            #     for i, x in np.ndenumerate(param_dic[p]):
-            #         print(i)
-            # else:
-            #     for i, x in np.ndenumerate(param_dic[p]):
-            #         print(i)
         return results
 
 
@@ -182,37 +139,24 @@ def plot_circle_data_decision(classifier, data):
     x1_1 = []
     x2_1 = []
     # for d in data:
-        
+
 
 
 raw_data = np.loadtxt(open('circles.txt','r'))
 data = [DataPoint(x=rd[0:2].reshape(2,1), y=rd[2]) for rd in raw_data]
 
-#np.random.seed(1234)
-hp = HyperParams(l11=0, l12=0, l21=0, l22=0, K=10, eta=1e-01)
+np.random.seed(1234)
+hp = HyperParams(l11=0.001, l12=0.001, l21=0.001, l22=0.001, K=100, eta=1e-01)
 test = MLP(data, 4, 2, hp)
-test.train(tol=1e-06)
-print("some predictions...")
-for dp in data[0:10]:
-    print('True:{} // Prediction:{}'.format(dp.y, test.predict(dp.x)))
 
+res = test.finite_difference(1)
+for r in res:
+    print('{}{}'.format(r[0],r[1]))
+    print('\tGrad:{}'.format(r[2]))
+    print('\tEst:{}'.format(r[3]))
+    print('\tRatio:{}'.format(r[4]))
 
-# res = test.test_gradient()
-# for r in res:
-#     print('{}{}'.format(r[0],r[1]))
-#     print('\tGrad:{}'.format(r[2]))
-#     print('\tEst:{}'.format(r[3]))
-#     print('\tRatio:{}'.format(r[4]))
-# test.params._asdict()['W1'][0,0] = 2
-# print(test.params._fields)
-# dp = DataPoint(x=np.array([2, 2]), y=0)
-# init = test.FB(dp)
-# w2_init = test.bl.W2[0, 1]
-# print("LL(init): ", init)
-# print("G(init): ", w2_init)
-# test.params.W2[0, 1] = test.params.W2[0, 1] + 1e-05
-# pert = test.FB(dp)
-# print("LL(pert): ", pert)
-# print("estimated: ", (pert-init)/1e-05)
-# print("ratio: ", w2_init/((pert-init)/1e-05))
-
+# test.train(tol=1e-06)
+# print("some predictions...")
+# for dp in data[0:20]:
+#     print('True:{} // Prediction:{}'.format(dp.y, test.predict(dp.x)))
