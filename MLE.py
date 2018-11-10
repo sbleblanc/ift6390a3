@@ -146,9 +146,10 @@ raw_data = np.loadtxt(open('circles.txt','r'))
 data = [DataPoint(x=rd[0:2].reshape(2,1), y=rd[2]) for rd in raw_data]
 
 np.random.seed(1234)
-hp = HyperParams(l11=0.001, l12=0.001, l21=0.001, l22=0.001, K=100, eta=1e-01)
+hp = HyperParams(l11=0., l12=0., l21=0., l22=0., K=10, eta=1e-01)
 test = MLP(data, 4, 2, hp)
 
+#Faire attention au hyperparam l11,l12,l21,l22. Devrait etre 0 sinon la regularization embarque et le gradient se compare pas vraiment au finite difference
 res = test.finite_difference(1)
 for r in res:
     print('{}{}'.format(r[0],r[1]))
